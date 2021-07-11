@@ -6,6 +6,7 @@ namespace Matt.FountainCodes
     using System.Collections.Generic;
     using System.IO;
     using System.IO.MemoryMappedFiles;
+    using System.Linq;
     using System.Reactive.Disposables;
     using System.Text;
     using Matt.Accelerated;
@@ -133,25 +134,22 @@ namespace Matt.FountainCodes
 
             // Populate the slices with the message
             var random = new Random();
-            for (var i = 0; i < numSlices; ++i)
+            var coefficientsFactory = new CoefficientsFactory(
+                () => random.Next() % 2 == 0,
+                () => random.Next()
+            );
+            foreach (var (rental, stream) in coefficientsFactory.Generate(numCoefficients, false).Take(numSlices).Zip(segments))
             {
-                var atLeastOneSet = false;
+                using var _ = rental;
+                var coefficients = rental.Memory.Span;
                 var offsetsInMessage = new List<long>();
-                var stream = segments[i];
-                while (!atLeastOneSet)
+                stream.Position = 0;
+                for (var i = 0; i < numCoefficients; ++i)
                 {
-                    for (var j = 0; j < numCoefficients; ++j)
-                    {
-                        var include = random.Next() % 2 == 0;
-                        if (!include)
-                            continue;
-                        atLeastOneSet = true;
-                        stream.Position = j;
-                        stream.WriteByte(0xff);
-                        offsetsInMessage.Add(j * rowWidth);
-                    }
+                    stream.WriteByte(coefficients[i] ? byte.MaxValue : byte.MinValue);
+                    if (coefficients[i])
+                        offsetsInMessage.Add(i * rowWidth);
                 }
-                stream.Position = numCoefficients;
                 StreamHelpers.MultiXor(
                     message,
                     stream,
