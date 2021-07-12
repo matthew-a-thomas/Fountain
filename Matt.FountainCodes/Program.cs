@@ -86,6 +86,7 @@ namespace Matt.FountainCodes
     {
         static void Main()
         {
+            Directory.SetCurrentDirectory(@"D:\Downloads");
             // Formula for estimating how many XOR operations will be needed:
             // y = 0.4992 * x * x + 3.1447 * x - 31.738
 
@@ -98,20 +99,6 @@ namespace Matt.FountainCodes
             const int rowWidth = 1024 * 1024;
             const int numSlices = numCoefficients + 5;
             using var problem = new MyGaussianProblem(numCoefficients, rowWidth, logger.WriteLine);
-            var segments = new List<FileStream>();
-            for (var i = 0; i < numSlices; ++i)
-            {
-                var file = new FileStream(
-                    $"{i}.dat",
-                    FileMode.Create,
-                    FileAccess.ReadWrite,
-                    FileShare.Read
-                );
-                file.SetLength(numCoefficients + rowWidth);
-                disposable.Add(file);
-                problem.Add(file);
-                segments.Add(file);
-            }
 
             // Generate the message on disk
             FileStream message;
@@ -138,24 +125,52 @@ namespace Matt.FountainCodes
                 () => random.Next() % 2 == 0,
                 () => random.Next()
             );
-            foreach (var (rental, stream) in coefficientsFactory.Generate(numCoefficients, false).Take(numSlices).Zip(segments))
+            ISliceWriter<FileStream> sliceWriter = new SliceWriter();
+            var enumerable = coefficientsFactory
+                .Generate(numCoefficients, false)
+                .Take(numSlices)
+                .Select((x, i) => (x, i));
+            var buffer = new byte[rowWidth];
+            using var source = new SlidingMemoryMappedFile(
+                message,
+                MemoryMappedFileAccess.Read,
+                true,
+                rowWidth * 10
+            );
+            foreach (var (rental, i) in enumerable)
             {
                 using var _ = rental;
                 var coefficients = rental.Memory.Span;
-                var offsetsInMessage = new List<long>();
-                stream.Position = 0;
-                for (var i = 0; i < numCoefficients; ++i)
+
+                // Prepare the slice data
+                for (var j = 0; j < numCoefficients; ++j)
                 {
-                    stream.WriteByte(coefficients[i] ? byte.MaxValue : byte.MinValue);
-                    if (coefficients[i])
-                        offsetsInMessage.Add(i * rowWidth);
+                    if (!coefficients[j])
+                        continue;
+                    Bitwise.Xor(
+                        source.GetMemory(j * rowWidth, rowWidth).Span,
+                        buffer
+                    );
                 }
-                StreamHelpers.MultiXor(
-                    message,
-                    stream,
-                    rowWidth,
-                    offsetsInMessage
+
+                // Write the slice
+                var stream = new FileStream(
+                    $"{i}.dat",
+                    FileMode.Create,
+                    FileAccess.ReadWrite,
+                    FileShare.Read
                 );
+                sliceWriter.Write(
+                    stream,
+                    coefficients,
+                    buffer
+                );
+                stream.Flush();
+                Array.Clear(buffer, 0, buffer.Length);
+
+                // Make the slice part of the problem to solve
+                problem.Add(stream);
+                disposable.Add(stream);
             }
 
             // Solve the Gaussian Elimination problem
