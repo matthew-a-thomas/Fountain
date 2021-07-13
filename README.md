@@ -1,4 +1,4 @@
-# Matt.FountainCodes
+# Fountain
 
 Another demonstration of Fountain Codes.
 

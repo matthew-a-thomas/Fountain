@@ -1,10 +1,10 @@
-﻿namespace Matt.FountainCodes
+﻿namespace Fountain
 {
     using System.IO;
     using System.IO.MemoryMappedFiles;
-    using Accelerated;
-    using GaussianElimination;
-    using MemoryMappedFiles;
+    using Matt.Accelerated;
+    using Matt.GaussianElimination;
+    using Matt.MemoryMappedFiles;
 
     public class InPlaceProblem : IGaussianProblem
     {

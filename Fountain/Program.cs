@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace Matt.FountainCodes
+namespace Fountain
 {
     using System.Collections.Generic;
     using System.IO;

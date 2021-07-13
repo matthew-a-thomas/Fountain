@@ -1,4 +1,4 @@
-﻿namespace Matt.FountainCodes
+﻿namespace Fountain
 {
     using System;
 
