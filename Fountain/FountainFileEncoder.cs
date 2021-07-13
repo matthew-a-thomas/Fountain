@@ -3,9 +3,9 @@
     using System;
     using System.IO;
     using System.IO.MemoryMappedFiles;
-    using System.Linq;
     using System.Security.Cryptography;
     using Matt.Accelerated;
+    using Matt.GaussianElimination;
 
     class FountainFileEncoder
     {
@@ -21,7 +21,7 @@
             string filename,
             bool systematic,
             ushort numCoefficients,
-            ushort numRows)
+            ushort? numRows)
         {
             using var file = new FileStream(filename, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.RandomAccess);
             numCoefficients = (ushort)Math.Min(numCoefficients, file.Length);
@@ -59,39 +59,49 @@
             }
             fountain.Write(BitConverter.GetBytes((ulong)file.Length));
             fountain.Write(BitConverter.GetBytes((ushort)numCoefficients));
-            fountain.Write(BitConverter.GetBytes((ulong)rowSize));
-            fountain.Flush();
+
+            if (numRows is 0)
+                return;
 
             var packedCoefficientsSize = (int)Math.Ceiling(numCoefficients / 8.0);
-            var blockSize = rowSize + packedCoefficientsSize;
-            var dataSize = blockSize * numRows;
-            var dataOffset = fountain.Position;
-            fountain.SetLength(fountain.Length + dataSize);
-            using var fountainMemory = new SlidingMemoryMappedFile(fountain, MemoryMappedFileAccess.ReadWrite, true, 1024 * 1024 * 100);
+            var packedCoefficientsBuffer = new byte[packedCoefficientsSize];
+            var rowBuffer = new byte[rowSize];
 
+            var problem = numRows.HasValue
+                ? null
+                : new JustCoefficientsProblem(numCoefficients);
             using var fileMemory = new SlidingMemoryMappedFile(file, MemoryMappedFileAccess.Read, true, 1024 * 1024 * 100);
-            foreach (var (coefficients, i) in _coefficientsFactory
-                .Generate(numCoefficients, systematic)
-                .Take(numRows)
-                .Select((x, i) => (x, i)))
+            foreach (var coefficients in _coefficientsFactory.Generate(numCoefficients, systematic))
             {
                 using var _ = coefficients;
                 var coefficientsSpan = coefficients.Memory.Span;
-                var block = fountainMemory.GetMemory(dataOffset + i * blockSize, blockSize).Span;
-                var packedCoefficients = block[..packedCoefficientsSize];
-                var row = block[packedCoefficientsSize..];
+                Array.Clear(packedCoefficientsBuffer, 0, packedCoefficientsBuffer.Length);
+                Array.Clear(rowBuffer, 0, rowBuffer.Length);
                 for (var j = 0; j < numCoefficients; ++j)
                 {
                     if (!coefficientsSpan[j])
                         continue;
-                    packedCoefficients[j / 8] |= (byte)(0x1 << j % 8);
+                    packedCoefficientsBuffer[j / 8] |= (byte)(0x1 << (7 - j % 8));
                     var fileChunk = fileMemory
                         .GetMemory(j * rowSize, (int)Math.Min(rowSize, file.Length - j * rowSize))
                         .Span;
                     Bitwise.Xor(
                         fileChunk,
-                        row[..fileChunk.Length]
+                        rowBuffer.AsSpan(0, fileChunk.Length)
                     );
+                }
+                fountain.Write(packedCoefficientsBuffer);
+                fountain.Write(rowBuffer);
+
+                if (problem is not null)
+                {
+                    problem.Add(coefficients.Memory);
+                    if (GaussianSolver.Solve(problem))
+                        return;
+                }
+                else if (--numRows == 0)
+                {
+                    return;
                 }
             }
         }

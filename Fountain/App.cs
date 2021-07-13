@@ -86,7 +86,8 @@ Usage:
                             : (ushort)Math.Min(ushort.MaxValue, numCoefficients + 7);
                     }
 
-                    Encode(fileNames[0],
+                    Encode(
+                        fileNames[0],
                         systematic,
                         numCoefficients,
                         numRows);

@@ -10,10 +10,8 @@ There are a few sections in a fountain file.
 
  * Magic ASCII string "FNT0". 4 bytes
  * SHA256 hash of source file. 32 bytes
- * File size. VLQ
+ * File size. 8 byte unsigned integer
  * Num coefficients. 2 byte unsigned integer
- * Row size. VLQ
- * Num rows. 2 byte unsigned integer
 
 **Data**
 
