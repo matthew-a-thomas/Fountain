@@ -2,8 +2,11 @@
 {
     using System;
     using System.IO;
+    using System.IO.MemoryMappedFiles;
     using System.Linq;
     using System.Reflection;
+    using System.Runtime.InteropServices;
+    using Matt.MemoryMappedFiles;
 
     class App
     {
@@ -13,6 +16,7 @@
         readonly FountainFileEncoder _encoder;
         readonly FountainFileMerger _merger;
         readonly FountainFileShrinker _shrinker;
+        readonly FountainFileInfoProvider _infoProvider;
 
         public App(
             CommandLineArgs args,
@@ -20,7 +24,8 @@
             FountainFileDecoder decoder,
             FountainFileEncoder encoder,
             FountainFileMerger merger,
-            FountainFileShrinker shrinker)
+            FountainFileShrinker shrinker,
+            FountainFileInfoProvider infoProvider)
         {
             _args = args;
             _commandLineParser = commandLineParser;
@@ -28,6 +33,7 @@
             _encoder = encoder;
             _merger = merger;
             _shrinker = shrinker;
+            _infoProvider = infoProvider;
         }
 
         static void PrintUsage()
@@ -35,14 +41,16 @@
             var exeName = Path.GetFileName(Assembly.GetEntryAssembly()?.Location);
             Console.Error.WriteLine(@$"Fountain Codes {Assembly.GetExecutingAssembly().GetName().Version}
 Usage:
-{exeName} --encode <filename> [--coeff=<n>] [--rows=<n>]
+{exeName} --encode <filename> <output> [--slice=<n>] [--rows=<n>] [--systematic=(true|false)] [--percent=5]
     Encodes the given <filename> as a .fountain file
-{exeName} --merge <fountain-from> <fountain-to>
-    Merges the <fountain-from> .fountain file into the <fountain-to> .fountain file
+{exeName} --merge <fountain>
+    Merges all compatible .fountain files in the same directory as <fountain> into <fountain>
 {exeName} --shrink <fountain>
     Shrinks the <fountain> .fountain file if possible
-{exeName} --decode <fountain>
-    Decodes the <fountain> .fountain file if possible");
+{exeName} --decode <fountain> <output>
+    Decodes the <fountain> .fountain file if possible
+{exeName} --info <fountain> [<fountain> ...]
+    Prints information about the given fountain files");
             Environment.ExitCode = 1;
         }
 
@@ -55,42 +63,50 @@ Usage:
                 .ToList();
             if (args.ContainsKey("--encode"))
             {
-                if (fileNames.Count == 1)
+                if (fileNames.Count == 2)
                 {
                     var systematic =
-                        !args.TryGetValue("--systematic", out var systematicString)
-                        || !bool.TryParse(systematicString, out var x)
-                        || x;
+                        args.TryGetValue("--systematic", out var systematicString)
+                        && bool.TryParse(systematicString, out var x)
+                        && x;
 
-                    ushort numCoefficients;
-                    if (args.TryGetValue("--coeff", out var coeffString))
+                    uint? rowSize = null;
+                    if (args.TryGetValue("--slice", out var coeffString))
                     {
-                        if (!ushort.TryParse(coeffString, out numCoefficients))
-                            throw new Exception("--coeff needs to be an unsigned 16 bit integer");
-                    }
-                    else
-                    {
-                        numCoefficients = 64;
+                        if (uint.TryParse(coeffString, out var parsedRowSize))
+                            rowSize = parsedRowSize;
+                        else
+                            throw new Exception("--slice needs to be an unsigned 32 bit integer");
                     }
 
-                    ushort numRows;
+                    ushort? numRows = null;
                     if (args.TryGetValue("--rows", out var rowsString))
                     {
-                        if (!ushort.TryParse(rowsString, out numRows))
+                        if (ushort.TryParse(rowsString, out var parsedNumRows))
+                            numRows = parsedNumRows;
+                        else
                             throw new Exception("--rows needs to be an unsigned 16 bit integer");
                     }
-                    else
+
+                    double? percent = null;
+                    if (args.TryGetValue("--percent", out var percentString))
                     {
-                        numRows = systematic
-                            ? numCoefficients
-                            : (ushort)Math.Min(ushort.MaxValue, numCoefficients + 7);
+                        if (double.TryParse(percentString, out var parsedPercent))
+                            percent = parsedPercent / 100.0;
+                        else
+                            throw new Exception("--percent needs to be a number");
                     }
 
-                    Encode(
-                        fileNames[0],
+                    string filename = fileNames[0];
+                    FailIfNotExists(filename);
+
+                    _encoder.Encode(
+                        filename,
                         systematic,
-                        numCoefficients,
-                        numRows);
+                        rowSize,
+                        numRows,
+                        percent,
+                        fileNames[1]);
                 }
                 else
                 {
@@ -99,9 +115,12 @@ Usage:
             }
             else if (args.ContainsKey("--merge"))
             {
-                if (fileNames.Count == 2)
+                if (fileNames.Count == 1)
                 {
-                    Merge(fileNames[0], fileNames[1]);
+                    string fountain = fileNames[0];
+                    FailIfNotExists(fountain);
+                    FailIfNotFountain(fountain);
+                    _merger.Merge(fountain);
                 }
                 else
                 {
@@ -112,7 +131,10 @@ Usage:
             {
                 if (fileNames.Count == 1)
                 {
-                    Shrink(fileNames[0]);
+                    string fountain = fileNames[0];
+                    FailIfNotExists(fountain);
+                    FailIfNotFountain(fountain);
+                    _shrinker.Shrink(fountain);
                 }
                 else
                 {
@@ -121,9 +143,23 @@ Usage:
             }
             else if (args.ContainsKey("--decode"))
             {
-                if (fileNames.Count == 1)
+                if (fileNames.Count == 2)
                 {
-                    Decode(fileNames[0]);
+                    string fountain = fileNames[0];
+                    FailIfNotExists(fountain);
+                    FailIfNotFountain(fountain);
+                    _decoder.Decode(fountain, fileNames[1]);
+                }
+                else
+                {
+                    PrintUsage();
+                }
+            }
+            else if (args.ContainsKey("--info"))
+            {
+                if (fileNames.Count > 0)
+                {
+                    _infoProvider.PrintInfo(fileNames);
                 }
                 else
                 {
@@ -134,43 +170,6 @@ Usage:
             {
                 PrintUsage();
             }
-        }
-
-        void Decode(string fountain)
-        {
-            FailIfNotExists(fountain);
-            FailIfNotFountain(fountain);
-            _decoder.Decode(fountain);
-        }
-
-        void Encode(
-            string filename,
-            bool systematic,
-            ushort numCoefficients,
-            ushort numRows)
-        {
-            FailIfNotExists(filename);
-            _encoder.Encode(
-                filename,
-                systematic,
-                numCoefficients,
-                numRows);
-        }
-
-        void Merge(string fountainFrom, string fountainTo)
-        {
-            FailIfNotExists(fountainFrom);
-            FailIfNotExists(fountainTo);
-            FailIfNotFountain(fountainFrom);
-            FailIfNotFountain(fountainTo);
-            _merger.Merge(fountainFrom, fountainTo);
-        }
-
-        void Shrink(string fountain)
-        {
-            FailIfNotExists(fountain);
-            FailIfNotFountain(fountain);
-            _shrinker.Shrink(fountain);
         }
 
         static void FailIfNotExists(string filename)
@@ -184,13 +183,12 @@ Usage:
         static void FailIfNotFountain(string fountain)
         {
             using var file = new FileStream(fountain, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            var buffer = new byte[4];
-            if (file.Read(buffer) != buffer.Length)
+            if (file.Length < FountainFileMath.GetOverviewSize())
                 throw new Exception($"{fountain} is not a fountain file");
-            if (buffer[0] != 'F' || buffer[1] != 'N' || buffer[2] != 'T')
+            using var memoryManager = MemoryMappedFileHelper.CreateMemoryManager(file, MemoryMappedFileAccess.Read, out _, 0, FountainFileMath.GetOverviewSize(), true);
+            ref readonly var overview = ref MemoryMarshal.AsRef<Overview>(memoryManager.GetSpan());
+            if (!Overview.IsMagic(in overview))
                 throw new Exception($"{fountain} is not a fountain file");
-            if (buffer[3] != '0')
-                throw new Exception($"{fountain} might be a fountain file, but not of a recognized version");
         }
     }
 }

@@ -2,6 +2,7 @@
 {
     using System;
     using System.Diagnostics.CodeAnalysis;
+    using System.Security.Cryptography;
     using Autofac;
 
     class Module : Autofac.Module
@@ -15,14 +16,15 @@
             builder.RegisterType<FountainFileEncoder>();
             builder.RegisterType<FountainFileMerger>();
             builder.RegisterType<FountainFileShrinker>();
+            builder.RegisterType<FountainFileInfoProvider>();
             builder.Register<CoefficientsFactory>(_ =>
             {
-                var random = new Random();
                 return new CoefficientsFactory(
-                    () => random.Next() % 2 == 0,
-                    () => random.Next()
+                    () => RandomNumberGenerator.GetInt32(int.MaxValue) % 2 == 0,
+                    () => RandomNumberGenerator.GetInt32(int.MaxValue)
                 );
             });
+            builder.RegisterType<OverviewReader>();
         }
     }
 }

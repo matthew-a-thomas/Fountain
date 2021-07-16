@@ -18,7 +18,7 @@
             }
             catch (Exception e)
             {
-                Console.Error.WriteLine(e.Message);
+                Console.Error.WriteLine(e.ToString());
                 Environment.ExitCode = 1;
             }
         }

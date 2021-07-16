@@ -8,6 +8,7 @@
         <Platforms>AnyCPU;x86</Platforms>
         <Nullable>enable</Nullable>
         <RootNamespace>Fountain</RootNamespace>
+        <Version>0.0.1</Version>
     </PropertyGroup>
 
     <ItemGroup>
@@ -16,6 +17,12 @@
       <PackageReference Include="Matt.GaussianElimination" Version="0.0.1" />
       <PackageReference Include="Matt.MemoryMappedFiles" Version="0.4.0" />
       <PackageReference Include="System.Reactive.Core" Version="5.0.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <None Update="test.bat">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </None>
     </ItemGroup>
 
 </Project>
