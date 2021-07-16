@@ -36,9 +36,8 @@
             {
                 var numPackedCoefficients = PackedCoefficients.GetNumPackedBytes(FountainFileMath.GetNumCoefficients(overview.FileSize, overview.RowSize));
                 var rowBuffer = new byte[overview.RowSize];
-                var blockSize = numPackedCoefficients + overview.RowSize;
                 var numBytesLeft = (long)overview.FileSize;
-                for (file.Position = FountainFileMath.GetOverviewSize(); file.Position <= file.Length - blockSize;)
+                for (file.Position = FountainFileMath.GetOverviewSize(); numBytesLeft > 0;)
                 {
                     file.Seek(numPackedCoefficients, SeekOrigin.Current);
                     if (file.Read(rowBuffer) != rowBuffer.Length)
