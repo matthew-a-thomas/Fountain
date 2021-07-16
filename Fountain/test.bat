@@ -27,4 +27,6 @@ fountain --info fountain.exe.fountain
 fountain --shrink fountain.exe.fountain
 fountain --info fountain.exe.fountain
 
-pause
+fountain --decode fountain.exe.fountain fountain2.exe
+
+dir fountain2.exe

@@ -2,6 +2,13 @@
 
 Fountain codes applied to files.
 
+```
+dotnet build -c Release Fountain\Fountain.csproj
+pushd Fountain\bin\Release\net5.0
+test.bat
+popd
+```
+
 ## Things you can do
 
 Turn a file into several fountain files:
