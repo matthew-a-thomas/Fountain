@@ -76,6 +76,9 @@ A fountain code is a forward error correction code, sort of like Reed Solomon bu
 
 Here's how it works: split your file up into `k` equal parts. Pick a random subset of those `k` parts and XOR them together. That's one row in a fountain file. Once you have enough rows (usually not many more than `k`) then you can decode the fountain file to get your file back.
 
+Here's a gentle introduction to fountain codes:
+https://www.matthewathomas.com/programming/2021/07/19/fountain-codes.html
+
 One of the nice things about fountain files is you can turn a single file into multiple fountain files with different numbers of rows in each and save them in different places. Then your file is safe! It doesn't matter which rows survive but as long as roughly `k` of them do then you'll be able to recover your file. If you want your file to be more safe then just generate and store more fountain files.
 
 ## Other things you can do
